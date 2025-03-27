@@ -1,5 +1,5 @@
 [package]
-name = "embedded-sos"
+name = "rust-ili9341-init"
 version = "0.1.0"
 edition = "2021"
 
