@@ -199,10 +199,10 @@ impl Ili9341 {
         h: u16,
         color: color::Color,
     ) -> Result<(), Error> {
-        let [x1_low, x1_high] = x.to_be_bytes();
-        let [x2_low, x2_high] = (x + w - 1).to_be_bytes();
-        let [y1_low, y1_high] = x.to_be_bytes();
-        let [y2_low, y2_high] = (y + h - 1).to_be_bytes();
+        let [x1_high, x1_low] = x.to_be_bytes();
+        let [x2_high, x2_low] = (x + w - 1).to_be_bytes();
+        let [y1_high, y1_low] = y.to_be_bytes();
+        let [y2_high, y2_low] = (y + h - 1).to_be_bytes();
         let [color_low, color_high] = (color as u16).to_be_bytes();
 
         self.dc.set_low();
@@ -210,7 +210,7 @@ impl Ili9341 {
         self.dc.set_high();
         self.spi.write(&[x1_high, x1_low, x2_high, x2_low])?;
         self.dc.set_low();
-        self.spi.write(&[0x2A])?;
+        self.spi.write(&[0x2B])?;
         self.dc.set_high();
         self.spi.write(&[y1_high, y1_low, y2_high, y2_low])?;
         self.dc.set_low();
