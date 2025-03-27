@@ -5,8 +5,10 @@ mod color;
 mod ili9341;
 
 use cortex_m_rt::entry;
+use embedded_graphics::{image::Image, pixelcolor::Rgb565, prelude::*};
 use panic_halt as _;
 use stm32f4xx_hal::{hal::spi, pac, prelude::*, spi::NoMiso};
+use tinybmp::Bmp;
 
 #[entry]
 fn main() -> ! {
@@ -38,13 +40,14 @@ fn main() -> ! {
         .spi((sclk, NoMiso::new(), mosi), spi::MODE_0, 20.MHz(), &clocks);
 
     let mut lcd = ili9341::Ili9341::new(dc, spi, delay);
-    lcd.init().unwrap();
-    lcd.fill_screen(color::Color::White).unwrap();
-    lcd.fill_region(0, 0, 240, 32, color::Color::DarkGrey)
+    lcd.clear(Rgb565::WHITE).unwrap();
+
+    let bmp_data = include_bytes!("../image.bmp");
+    let bmp: Bmp<Rgb565> = Bmp::from_slice(bmp_data).unwrap();
+
+    Image::new(&bmp, Point::new(120, 160))
+        .draw(&mut lcd)
         .unwrap();
-    lcd.v_line(120, 0, 320, color::Color::Red).unwrap();
-    lcd.h_line(0, 160, 240, color::Color::GreenYellow).unwrap();
-    lcd.line(0, 240, 0, 320, color::Color::Blue).unwrap();
 
     #[allow(clippy::empty_loop)]
     loop {}

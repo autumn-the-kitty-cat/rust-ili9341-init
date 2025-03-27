@@ -1,4 +1,6 @@
 #![allow(unused)]
+
+use embedded_graphics::{pixelcolor::raw::ToBytes, prelude::RawData};
 #[derive(Copy, Clone)]
 pub enum Color {
     Black = 0x0000,       //<   0,   0,   0

@@ -1,5 +1,9 @@
-use crate::color;
-
+use embedded_graphics::{
+    pixelcolor::{raw::RawU16, Rgb565},
+    prelude::{Dimensions, DrawTarget, Point, RawData, Size},
+    primitives::Rectangle,
+    Pixel,
+};
 use stm32f4xx_hal::{
     gpio::{Output, Pin},
     pac::SPI1,
@@ -18,12 +22,75 @@ struct Ili9341Command {
 pub struct Ili9341 {
     dc: Pin<'C', 2, Output>,
     spi: Spi<SPI1>,
-    delay: SysDelay,
+}
+
+impl Dimensions for Ili9341 {
+    fn bounding_box(&self) -> Rectangle {
+        Rectangle {
+            top_left: Point { x: 0, y: 0 },
+            size: Size {
+                width: 240,
+                height: 320,
+            },
+        }
+    }
+}
+
+impl DrawTarget for Ili9341 {
+    type Color = Rgb565;
+    type Error = Error;
+    fn draw_iter<I>(&mut self, pixels: I) -> Result<(), Self::Error>
+    where
+        I: IntoIterator<Item = embedded_graphics::Pixel<Self::Color>>,
+    {
+        for Pixel(point, color) in pixels {
+            let x: u16 = point.x.try_into().unwrap();
+            let y: u16 = point.y.try_into().unwrap();
+            let color = RawU16::from(color).into_inner();
+            let [x1_high, x1_low] = x.to_be_bytes();
+            let [x2_high, x2_low] = x.to_be_bytes();
+            let [y1_high, y1_low] = y.to_be_bytes();
+            let [y2_high, y2_low] = y.to_be_bytes();
+            let [color_low, color_high] = color.to_be_bytes();
+
+            self.dc.set_low();
+            self.spi.write(&[Self::ILI9341_CASET])?;
+            self.dc.set_high();
+            self.spi.write(&[x1_high, x1_low, x2_high, x2_low])?;
+            self.dc.set_low();
+            self.spi.write(&[Self::ILI9341_PASET])?;
+            self.dc.set_high();
+            self.spi.write(&[y1_high, y1_low, y2_high, y2_low])?;
+            self.dc.set_low();
+            self.spi.write(&[Self::ILI9341_RAMWR])?;
+            self.dc.set_high();
+
+            self.spi.write(&[color_low, color_high])?;
+        }
+
+        Ok(())
+    }
 }
 
 impl Ili9341 {
-    pub fn new(dc: Pin<'C', 2, Output>, spi: Spi<SPI1>, delay: SysDelay) -> Self {
-        Self { dc, spi, delay }
+    pub fn new(mut dc: Pin<'C', 2, Output>, mut spi: Spi<SPI1>, mut delay: SysDelay) -> Self {
+        for command in Self::INIT_SEQUENCE {
+            // send command
+            dc.set_low();
+            spi.write(&[command.command]).unwrap();
+
+            dc.toggle();
+            if command.arg_count > 0 {
+                spi.write(&[command.arguments[0]]).unwrap();
+            }
+
+            if command.arg_count > 1 {
+                spi.write(&[command.arguments[1]]).unwrap();
+            }
+
+            delay.delay_ms(command.delay as u32);
+        }
+        Self { dc, spi }
     }
 
     const ILI9341_NOP: u8 = 0x00; // No Operation
@@ -167,143 +234,4 @@ impl Ili9341 {
             arg_count: 0,
         },
     ];
-
-    pub fn init(&mut self) -> Result<(), Error> {
-        for command in Self::INIT_SEQUENCE {
-            // send command
-            self.dc.set_low();
-            self.spi.write(&[command.command])?;
-
-            self.dc.toggle();
-            if command.arg_count > 0 {
-                self.spi.write(&[command.arguments[0]])?;
-            }
-
-            if command.arg_count > 1 {
-                self.spi.write(&[command.arguments[1]])?;
-            }
-
-            self.delay.delay_ms(command.delay as u32);
-        }
-
-        Ok(())
-    }
-
-    pub fn fill_region(
-        &mut self,
-        x: u16,
-        y: u16,
-        w: u16,
-        h: u16,
-        color: color::Color,
-    ) -> Result<(), Error> {
-        let [x1_high, x1_low] = x.to_be_bytes();
-        let [x2_high, x2_low] = (x + w - 1).to_be_bytes();
-        let [y1_high, y1_low] = y.to_be_bytes();
-        let [y2_high, y2_low] = (y + h - 1).to_be_bytes();
-        let [color_low, color_high] = (color as u16).to_be_bytes();
-
-        self.dc.set_low();
-        self.spi.write(&[0x2A])?;
-        self.dc.set_high();
-        self.spi.write(&[x1_high, x1_low, x2_high, x2_low])?;
-        self.dc.set_low();
-        self.spi.write(&[0x2B])?;
-        self.dc.set_high();
-        self.spi.write(&[y1_high, y1_low, y2_high, y2_low])?;
-        self.dc.set_low();
-        self.spi.write(&[0x2C])?;
-        self.dc.set_high();
-
-        for _ in 0..(w as u32 * h as u32) {
-            self.spi.write(&[color_low, color_high])?;
-        }
-
-        Ok(())
-    }
-
-    pub fn v_line(
-        &mut self,
-        x: u16,
-        y: u16,
-        height: u16,
-        color: color::Color,
-    ) -> Result<(), Error> {
-        self.fill_region(x, y, 1, height, color)?;
-        Ok(())
-    }
-
-    pub fn h_line(&mut self, x: u16, y: u16, width: u16, color: color::Color) -> Result<(), Error> {
-        self.fill_region(x, y, width, 1, color)?;
-        Ok(())
-    }
-
-    pub fn fill_screen(&mut self, color: color::Color) -> Result<(), Error> {
-        self.fill_region(0, 0, 240, 320, color)?;
-        Ok(())
-    }
-
-    pub fn fill_pixel(&mut self, x: u16, y: u16, color: color::Color) -> Result<(), Error> {
-        self.fill_region(x, y, 1, 1, color)?;
-        Ok(())
-    }
-
-    // https://gist.github.com/yxnan/7a3bcc75d94163ba59a47dd6b304d9e1
-    pub fn line(
-        &mut self,
-        x1: u16,
-        x2: u16,
-        y1: u16,
-        y2: u16,
-        color: color::Color,
-    ) -> Result<(), Error> {
-        if x1 == x2 {
-            return self.v_line(x1, y1, y2.abs_diff(y1), color);
-        }
-
-        if y1 == y2 {
-            return self.h_line(x1, y1, x2.abs_diff(x1), color);
-        }
-
-        let mut cur_x: i32 = x1.into();
-        let mut cur_y: i32 = y1.into();
-        let mut err_x: i32 = 0;
-        let mut err_y: i32 = 0;
-        let mut delta_x: i32 = x2 as i32 - x1 as i32;
-        let mut delta_y: i32 = y2 as i32 - y1 as i32;
-        let inc_x: i32 = if delta_x > 0 {
-            1
-        } else if delta_x == 0 {
-            0
-        } else {
-            delta_x = -delta_x;
-            -1
-        };
-        let inc_y: i32 = if delta_y > 0 {
-            1
-        } else if delta_y == 0 {
-            0
-        } else {
-            delta_y = -delta_y;
-            -1
-        };
-        let distance: i32 = delta_x.max(delta_y);
-
-        for _ in 0..=distance {
-            self.fill_pixel(cur_x.try_into().unwrap(), cur_y.try_into().unwrap(), color)?;
-            err_x += delta_x;
-            err_y += delta_y;
-            if err_x > distance {
-                err_x -= distance;
-                cur_x += inc_x;
-            }
-
-            if err_y > distance {
-                err_y -= distance;
-                cur_y += inc_y;
-            }
-        }
-
-        Ok(())
-    }
 }
