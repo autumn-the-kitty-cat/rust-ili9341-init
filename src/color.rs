@@ -1,3 +1,5 @@
+#![allow(unused)]
+#[derive(Copy, Clone)]
 pub enum Color {
     Black = 0x0000,       //<   0,   0,   0
     Navy = 0x000F,        //<   0,   0, 123
