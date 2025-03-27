@@ -1,12 +1,10 @@
 use crate::color;
 
 use stm32f4xx_hal::{
-    flash::{FlashExt, LockedFlash},
     gpio::{Output, Pin},
-    hal::spi,
-    pac::{self, SPI1},
+    pac::SPI1,
     prelude::*,
-    spi::{Error, NoMiso, Spi},
+    spi::{Error, Spi},
     timer::SysDelay,
 };
 
@@ -242,6 +240,70 @@ impl Ili9341 {
 
     pub fn fill_screen(&mut self, color: color::Color) -> Result<(), Error> {
         self.fill_region(0, 0, 240, 320, color)?;
+        Ok(())
+    }
+
+    pub fn fill_pixel(&mut self, x: u16, y: u16, color: color::Color) -> Result<(), Error> {
+        self.fill_region(x, y, 1, 1, color)?;
+        Ok(())
+    }
+
+    // https://gist.github.com/yxnan/7a3bcc75d94163ba59a47dd6b304d9e1
+    pub fn line(
+        &mut self,
+        x1: u16,
+        x2: u16,
+        y1: u16,
+        y2: u16,
+        color: color::Color,
+    ) -> Result<(), Error> {
+        if x1 == x2 {
+            return self.v_line(x1, y1, y2.abs_diff(y1), color);
+        }
+
+        if y1 == y2 {
+            return self.h_line(x1, y1, x2.abs_diff(x1), color);
+        }
+
+        let mut cur_x: i32 = x1.into();
+        let mut cur_y: i32 = y1.into();
+        let mut err_x: i32 = 0;
+        let mut err_y: i32 = 0;
+        let mut delta_x: i32 = x2 as i32 - x1 as i32;
+        let mut delta_y: i32 = y2 as i32 - y1 as i32;
+        let inc_x: i32 = if delta_x > 0 {
+            1
+        } else if delta_x == 0 {
+            0
+        } else {
+            delta_x = -delta_x;
+            -1
+        };
+        let inc_y: i32 = if delta_y > 0 {
+            1
+        } else if delta_y == 0 {
+            0
+        } else {
+            delta_y = -delta_y;
+            -1
+        };
+        let distance: i32 = delta_x.max(delta_y);
+
+        for _ in 0..=distance {
+            self.fill_pixel(cur_x.try_into().unwrap(), cur_y.try_into().unwrap(), color)?;
+            err_x += delta_x;
+            err_y += delta_y;
+            if err_x > distance {
+                err_x -= distance;
+                cur_x += inc_x;
+            }
+
+            if err_y > distance {
+                err_y -= distance;
+                cur_y += inc_y;
+            }
+        }
+
         Ok(())
     }
 }
