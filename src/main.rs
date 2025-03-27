@@ -4,18 +4,9 @@
 mod color;
 mod ili9341;
 
-use cortex_m;
 use cortex_m_rt::entry;
 use panic_halt as _;
-use stm32f4xx_hal::{
-    flash::{FlashExt, LockedFlash},
-    gpio::{Output, Pin},
-    hal::spi,
-    pac::{self, SPI1},
-    prelude::*,
-    spi::{Error, NoMiso, Spi},
-    timer::SysDelay,
-};
+use stm32f4xx_hal::{hal::spi, pac, prelude::*, spi::NoMiso};
 
 #[entry]
 fn main() -> ! {
@@ -51,6 +42,10 @@ fn main() -> ! {
     lcd.fill_screen(color::Color::White).unwrap();
     lcd.fill_region(0, 0, 240, 32, color::Color::DarkGrey)
         .unwrap();
+    lcd.v_line(120, 0, 320, color::Color::Red).unwrap();
+    lcd.h_line(0, 160, 240, color::Color::GreenYellow).unwrap();
+    lcd.line(0, 240, 0, 320, color::Color::Blue).unwrap();
 
+    #[allow(clippy::empty_loop)]
     loop {}
 }
